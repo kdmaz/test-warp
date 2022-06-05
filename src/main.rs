@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::{io::Error, io::ErrorKind, str::FromStr};
-use warp::Filter;
+use warp::{http::Method, hyper::StatusCode, reject::Reject, Filter, Rejection, Reply};
 
 #[derive(Debug, Serialize)]
 struct QuestionId(String);
@@ -35,6 +35,11 @@ impl FromStr for QuestionId {
     }
 }
 
+#[derive(Debug)]
+struct InvalidId;
+
+impl Reject for InvalidId {}
+
 async fn get_questions() -> Result<impl warp::Reply, warp::Rejection> {
     let question = Question::new(
         QuestionId::from_str("1").expect("No id provided"),
@@ -43,15 +48,39 @@ async fn get_questions() -> Result<impl warp::Reply, warp::Rejection> {
         Some(vec!["faq".to_string()]),
     );
 
-    Ok(warp::reply::json(&question))
+    match question.id.0.parse::<i32>() {
+        Err(_) => Err(warp::reject::custom(InvalidId)),
+        Ok(_) => Ok(warp::reply::json(&question)),
+    }
+}
+
+async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
+    if let Some(_invalid_id) = r.find::<InvalidId>() {
+        Ok(warp::reply::with_status(
+            "No valid ID presented".to_owned(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ))
+    } else {
+        Ok(warp::reply::with_status(
+            "Route not found".to_owned(),
+            StatusCode::NOT_FOUND,
+        ))
+    }
 }
 
 #[tokio::main]
 async fn main() {
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_header("content-type")
+        .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
+
     let routes = warp::get()
         .and(warp::path("questions"))
         .and(warp::path::end())
-        .and_then(get_questions);
+        .and_then(get_questions)
+        .recover(return_error)
+        .with(cors);
 
     warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
 }
