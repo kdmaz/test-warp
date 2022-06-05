@@ -1,11 +1,11 @@
-use serde::Serialize;
-use std::{io::Error, io::ErrorKind, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt::Display};
 use warp::{http::Method, hyper::StatusCode, reject::Reject, Filter, Rejection, Reply};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 struct QuestionId(String);
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone, Deserialize)]
 struct Question {
     id: QuestionId,
     title: String,
@@ -13,58 +13,97 @@ struct Question {
     tags: Option<Vec<String>>,
 }
 
-impl Question {
-    fn new(id: QuestionId, title: String, content: String, tags: Option<Vec<String>>) -> Self {
-        Question {
-            id,
-            title,
-            content,
-            tags,
-        }
-    }
+#[derive(Debug)]
+enum Error {
+    ParseError(std::num::ParseIntError),
+    MissingParameters,
 }
 
-impl FromStr for QuestionId {
-    type Err = std::io::Error;
+impl Reject for Error {}
 
-    fn from_str(id: &str) -> Result<Self, Self::Err> {
-        match id.is_empty() {
-            false => Ok(QuestionId(id.to_owned())),
-            true => Err(Error::new(ErrorKind::InvalidInput, "No id provided")),
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::ParseError(err) => write!(f, "Cannot parse parameter: {}", err),
+            Error::MissingParameters => write!(f, "Missing parameter"),
         }
     }
 }
 
 #[derive(Debug)]
-struct InvalidId;
+struct Pagination {
+    start: usize,
+    end: usize,
+}
 
-impl Reject for InvalidId {}
+fn extract_pagination(params: HashMap<String, String>) -> Result<Pagination, Error> {
+    if params.contains_key("start") & params.contains_key("end") {
+        return Ok(Pagination {
+            start: params
+                .get("start")
+                .unwrap()
+                .parse::<usize>()
+                .map_err(Error::ParseError)?,
+            end: params
+                .get("end")
+                .unwrap()
+                .parse::<usize>()
+                .map_err(Error::ParseError)?,
+        });
+    }
 
-async fn get_questions() -> Result<impl warp::Reply, warp::Rejection> {
-    let question = Question::new(
-        QuestionId::from_str("1").expect("No id provided"),
-        "First Question".to_string(),
-        "Content of question".to_string(),
-        Some(vec!["faq".to_string()]),
-    );
+    Err(Error::MissingParameters)
+}
 
-    match question.id.0.parse::<i32>() {
-        Err(_) => Err(warp::reject::custom(InvalidId)),
-        Ok(_) => Ok(warp::reply::json(&question)),
+async fn get_questions(
+    params: HashMap<String, String>,
+    store: Store,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    if !params.is_empty() {
+        let pagination = extract_pagination(params)?;
+        let res = store.questions.values().cloned().collect::<Vec<Question>>();
+        let res = &res[pagination.start..pagination.end];
+        Ok(warp::reply::json(&res))
+    } else {
+        let res = store.questions.values().cloned().collect::<Vec<Question>>();
+        Ok(warp::reply::json(&res))
     }
 }
 
 async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
-    if let Some(_invalid_id) = r.find::<InvalidId>() {
+    if let Some(error) = r.find::<Error>() {
         Ok(warp::reply::with_status(
-            "No valid ID presented".to_owned(),
-            StatusCode::UNPROCESSABLE_ENTITY,
+            error.to_string(),
+            StatusCode::RANGE_NOT_SATISFIABLE,
         ))
     } else {
         Ok(warp::reply::with_status(
             "Route not found".to_owned(),
             StatusCode::NOT_FOUND,
         ))
+    }
+}
+
+#[derive(Clone)]
+struct Store {
+    questions: HashMap<QuestionId, Question>,
+}
+
+impl Store {
+    fn new() -> Self {
+        Store {
+            questions: Self::init(),
+        }
+    }
+
+    fn init() -> HashMap<QuestionId, Question> {
+        let file = include_str!("../questions.json");
+        serde_json::from_str(file).expect("can't read questions.json")
+    }
+
+    fn add_question(mut self, question: Question) -> Self {
+        self.questions.insert(question.id.clone(), question);
+        self
     }
 }
 
@@ -75,9 +114,14 @@ async fn main() {
         .allow_header("content-type")
         .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
 
+    let store = Store::new();
+    let store_filter = warp::any().map(move || store.clone());
+
     let routes = warp::get()
         .and(warp::path("questions"))
         .and(warp::path::end())
+        .and(warp::query())
+        .and(store_filter)
         .and_then(get_questions)
         .recover(return_error)
         .with(cors);
