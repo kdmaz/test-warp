@@ -1,6 +1,10 @@
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display};
-use warp::{http::Method, hyper::StatusCode, reject::Reject, Filter, Rejection, Reply};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
+use warp::{
+    body::BodyDeserializeError, http::Method, hyper::StatusCode, reject::Reject, Filter, Rejection,
+    Reply,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 struct QuestionId(String);
@@ -17,6 +21,7 @@ struct Question {
 enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
+    QuestionNotFound,
 }
 
 impl Reject for Error {}
@@ -26,6 +31,7 @@ impl Display for Error {
         match self {
             Error::ParseError(err) => write!(f, "Cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "Missing parameter"),
+            Error::QuestionNotFound => write!(f, "Question not found"),
         }
     }
 }
@@ -61,12 +67,54 @@ async fn get_questions(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     if !params.is_empty() {
         let pagination = extract_pagination(params)?;
-        let res = store.questions.values().cloned().collect::<Vec<Question>>();
+        let res = store
+            .questions
+            .read()
+            .values()
+            .cloned()
+            .collect::<Vec<Question>>();
         let res = &res[pagination.start..pagination.end];
         Ok(warp::reply::json(&res))
     } else {
-        let res = store.questions.values().cloned().collect::<Vec<Question>>();
+        let res = store
+            .questions
+            .read()
+            .values()
+            .cloned()
+            .collect::<Vec<Question>>();
         Ok(warp::reply::json(&res))
+    }
+}
+
+async fn add_question(
+    store: Store,
+    question: Question,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    store
+        .questions
+        .write()
+        .insert(question.id.clone(), question);
+
+    Ok(warp::reply::with_status("Question added", StatusCode::OK))
+}
+
+async fn update_question(
+    id: String,
+    store: Store,
+    question: Question,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    match store.questions.write().get_mut(&QuestionId(id)) {
+        Some(q) => *q = question,
+        None => return Err(warp::reject::custom(Error::QuestionNotFound)),
+    }
+
+    Ok(warp::reply::with_status("Question updated", StatusCode::OK))
+}
+
+async fn delete_question(id: String, store: Store) -> Result<impl warp::Reply, warp::Rejection> {
+    match store.questions.write().remove(&QuestionId(id)) {
+        Some(_) => Ok(warp::reply::with_status("Question Deleted", StatusCode::OK)),
+        None => Err(warp::reject::custom(Error::QuestionNotFound)),
     }
 }
 
@@ -75,6 +123,11 @@ async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
         Ok(warp::reply::with_status(
             error.to_string(),
             StatusCode::RANGE_NOT_SATISFIABLE,
+        ))
+    } else if let Some(error) = r.find::<BodyDeserializeError>() {
+        Ok(warp::reply::with_status(
+            error.to_string(),
+            StatusCode::UNPROCESSABLE_ENTITY,
         ))
     } else {
         Ok(warp::reply::with_status(
@@ -86,24 +139,19 @@ async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
 
 #[derive(Clone)]
 struct Store {
-    questions: HashMap<QuestionId, Question>,
+    questions: Arc<RwLock<HashMap<QuestionId, Question>>>,
 }
 
 impl Store {
     fn new() -> Self {
         Store {
-            questions: Self::init(),
+            questions: Arc::new(RwLock::new(Self::init())),
         }
     }
 
     fn init() -> HashMap<QuestionId, Question> {
         let file = include_str!("../questions.json");
         serde_json::from_str(file).expect("can't read questions.json")
-    }
-
-    fn add_question(mut self, question: Question) -> Self {
-        self.questions.insert(question.id.clone(), question);
-        self
     }
 }
 
@@ -117,14 +165,41 @@ async fn main() {
     let store = Store::new();
     let store_filter = warp::any().map(move || store.clone());
 
-    let routes = warp::get()
+    let get_questions = warp::get()
         .and(warp::path("questions"))
         .and(warp::path::end())
         .and(warp::query())
-        .and(store_filter)
-        .and_then(get_questions)
-        .recover(return_error)
-        .with(cors);
+        .and(store_filter.clone())
+        .and_then(get_questions);
+
+    let add_question = warp::post()
+        .and(warp::path("questions"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(add_question);
+
+    let update_question = warp::put()
+        .and(warp::path("questions"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(update_question);
+
+    let delete_question = warp::delete()
+        .and(warp::path("questions"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and_then(delete_question);
+
+    let routes = get_questions
+        .or(add_question)
+        .or(update_question)
+        .or(delete_question)
+        .with(cors)
+        .recover(return_error);
 
     warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
 }
