@@ -24,6 +24,16 @@ enum Error {
     QuestionNotFound,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+struct AnswerId(String);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Answer {
+    id: AnswerId,
+    content: String,
+    question_id: QuestionId,
+}
+
 impl Reject for Error {}
 
 impl Display for Error {
@@ -118,6 +128,20 @@ async fn delete_question(id: String, store: Store) -> Result<impl warp::Reply, w
     }
 }
 
+async fn add_answer(
+    store: Store,
+    params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let answer = Answer {
+        id: AnswerId("1".to_string()),
+        content: params.get("content").unwrap().to_string(),
+        question_id: QuestionId(params.get("questionId").unwrap().to_string()),
+    };
+    store.answers.write().insert(answer.id.clone(), answer);
+
+    Ok(warp::reply::with_status("Answer added", StatusCode::OK))
+}
+
 async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     if let Some(error) = r.find::<Error>() {
         Ok(warp::reply::with_status(
@@ -140,12 +164,14 @@ async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
 #[derive(Clone)]
 struct Store {
     questions: Arc<RwLock<HashMap<QuestionId, Question>>>,
+    answers: Arc<RwLock<HashMap<AnswerId, Answer>>>,
 }
 
 impl Store {
     fn new() -> Self {
         Store {
             questions: Arc::new(RwLock::new(Self::init())),
+            answers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -194,10 +220,18 @@ async fn main() {
         .and(store_filter.clone())
         .and_then(delete_question);
 
+    let add_answer = warp::post()
+        .and(warp::path("answers"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::form())
+        .and_then(add_answer);
+
     let routes = get_questions
         .or(add_question)
         .or(update_question)
         .or(delete_question)
+        .or(add_answer)
         .with(cors)
         .recover(return_error);
 
