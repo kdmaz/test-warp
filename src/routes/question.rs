@@ -1,15 +1,13 @@
-use std::collections::HashMap;
-
-use warp::hyper::StatusCode;
-
 use crate::{
-    error::Error,
     store::Store,
     types::{
         pagination::Pagination,
         question::{Question, QuestionId},
     },
 };
+use handle_errors::Error;
+use std::collections::HashMap;
+use warp::hyper::StatusCode;
 
 fn extract_pagination(params: HashMap<String, String>) -> Result<Pagination, Error> {
     if params.contains_key("start") & params.contains_key("end") {

@@ -1,9 +1,8 @@
-mod error;
 mod routes;
 mod store;
 mod types;
 
-use error::return_error;
+use handle_errors::return_error;
 use routes::{
     answer::add_answer,
     question::{add_question, delete_question, get_questions, update_question},
