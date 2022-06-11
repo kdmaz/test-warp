@@ -14,6 +14,12 @@ use warp::{http::Method, Filter};
 
 #[tokio::main]
 async fn main() {
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+
+    log::error!("This is an error!");
+    log::info!("This is an info!");
+    log::warn!("This is a warning!");
+
     let cors = warp::cors()
         .allow_any_origin()
         .allow_header("content-type")
