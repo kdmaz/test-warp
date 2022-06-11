@@ -7,17 +7,18 @@ use crate::{
 };
 use handle_errors::Error;
 use std::collections::HashMap;
+use tracing::{info, instrument};
 use warp::hyper::StatusCode;
 
+#[instrument]
 pub async fn get_questions(
     params: HashMap<String, String>,
     store: Store,
-    id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    log::info!("{} Start querying questions", id);
+    info!("querying questions");
     if !params.is_empty() {
         let pagination = extract_pagination(params)?;
-        log::info!("{} Pagination set {:?}", id, &pagination);
+        info!(pagination = true);
         let res = store
             .questions
             .read()
@@ -27,7 +28,7 @@ pub async fn get_questions(
         let res = &res[pagination.start..pagination.end];
         Ok(warp::reply::json(&res))
     } else {
-        log::info!("{} No pagination used", id);
+        info!(pagination = false);
         let res = store
             .questions
             .read()

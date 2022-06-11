@@ -5,7 +5,7 @@ use crate::types::{
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Store {
     pub questions: Arc<RwLock<HashMap<QuestionId, Question>>>,
     pub answers: Arc<RwLock<HashMap<AnswerId, Answer>>>,
