@@ -1,32 +1,13 @@
 use crate::{
     store::Store,
     types::{
-        pagination::Pagination,
+        pagination::extract_pagination,
         question::{Question, QuestionId},
     },
 };
 use handle_errors::Error;
 use std::collections::HashMap;
 use warp::hyper::StatusCode;
-
-fn extract_pagination(params: HashMap<String, String>) -> Result<Pagination, Error> {
-    if params.contains_key("start") & params.contains_key("end") {
-        return Ok(Pagination {
-            start: params
-                .get("start")
-                .unwrap()
-                .parse::<usize>()
-                .map_err(Error::ParseError)?,
-            end: params
-                .get("end")
-                .unwrap()
-                .parse::<usize>()
-                .map_err(Error::ParseError)?,
-        });
-    }
-
-    Err(Error::MissingParameters)
-}
 
 pub async fn get_questions(
     params: HashMap<String, String>,

@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 mod routes;
 mod store;
 mod types;
