@@ -1,23 +1,13 @@
-use crate::{
-    store::Store,
-    types::{
-        answer::{Answer, AnswerId},
-        question::QuestionId,
-    },
-};
-use std::collections::HashMap;
+use crate::{store::Store, types::answer::NewAnswer};
+use handle_errors::Error;
 use warp::hyper::StatusCode;
 
 pub async fn add_answer(
     store: Store,
-    params: HashMap<String, String>,
+    answer: NewAnswer,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let answer = Answer {
-        id: AnswerId("1".to_string()),
-        content: params.get("content").unwrap().to_string(),
-        question_id: QuestionId(params.get("questionId").unwrap().to_string()),
-    };
-    store.answers.write().insert(answer.id.clone(), answer);
-
-    Ok(warp::reply::with_status("Answer added", StatusCode::OK))
+    match store.add_answer(answer).await {
+        Ok(_) => Ok(warp::reply::with_status("Answer added", StatusCode::OK)),
+        Err(_) => Err(warp::reject::custom(Error::DatabaseQueryError)),
+    }
 }

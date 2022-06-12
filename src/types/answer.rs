@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 pub struct AnswerId(pub String);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NewAnswer {
+    pub content: String,
+    pub question_id: QuestionId,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Answer {
     pub id: AnswerId,
     pub content: String,
