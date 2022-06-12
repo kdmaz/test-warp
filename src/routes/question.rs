@@ -5,7 +5,6 @@ use crate::{
         question::{NewQuestion, Question},
     },
 };
-use handle_errors::Error;
 use std::collections::HashMap;
 use tracing::{event, instrument, Level};
 
@@ -27,7 +26,7 @@ pub async fn get_questions(
         .await
     {
         Ok(res) => res,
-        Err(_) => return Err(warp::reject::custom(Error::DatabaseQueryError)),
+        Err(e) => return Err(warp::reject::custom(e)),
     };
 
     Ok(warp::reply::json(&res))
@@ -39,7 +38,7 @@ pub async fn add_question(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match store.add_question(question).await {
         Ok(question) => Ok(warp::reply::json(&question)),
-        Err(_) => Err(warp::reject::custom(Error::DatabaseQueryError)),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
@@ -50,13 +49,13 @@ pub async fn update_question(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     match store.update_question(question).await {
         Ok(question) => Ok(warp::reply::json(&question)),
-        Err(_) => Err(warp::reject::custom(Error::DatabaseQueryError)),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }
 
 pub async fn delete_question(id: i32, store: Store) -> Result<impl warp::Reply, warp::Rejection> {
     match store.delete_question(id).await {
         Ok(_) => Ok(warp::reply::json(&id)),
-        Err(_) => Err(warp::reject::custom(Error::DatabaseQueryError)),
+        Err(e) => Err(warp::reject::custom(e)),
     }
 }

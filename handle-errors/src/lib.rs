@@ -1,11 +1,11 @@
 use std::fmt::Display;
+use tracing::{event, Level};
 use warp::{body::BodyDeserializeError, hyper::StatusCode, reject::Reject, Rejection, Reply};
 
 #[derive(Debug)]
 pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
-    QuestionNotFound,
     DatabaseQueryError,
 }
 
@@ -16,14 +16,16 @@ impl Display for Error {
         match self {
             Error::ParseError(err) => write!(f, "Cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "Missing parameter"),
-            Error::QuestionNotFound => write!(f, "Question not found"),
             Error::DatabaseQueryError => write!(f, "Query could not be executed"),
         }
     }
 }
 
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
-    if let Some(error) = r.find::<Error>() {
+    if let Some(Error::DatabaseQueryError) = r.find() {
+        event!(Level::ERROR, "Database query error");
+        Ok(warp::reply::with_status(Error::DatabaseQueryError.to_string(), StatusCode::UNPROCESSABLE_ENTITY))
+    } else if let Some(error) = r.find::<Error>() {
         Ok(warp::reply::with_status(
             error.to_string(),
             StatusCode::RANGE_NOT_SATISFIABLE,

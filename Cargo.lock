@@ -341,6 +341,7 @@ dependencies = [
 name = "handle-errors"
 version = "0.1.0"
 dependencies = [
+ "tracing",
  "warp",
 ]
 
