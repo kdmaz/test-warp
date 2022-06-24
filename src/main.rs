@@ -15,7 +15,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use warp::{http::Method, Filter};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), sqlx::Error> {
     let log_filter = std::env::var("RUST_LOG")
         .unwrap_or_else(|_| "handle_errors=info,test_warp=info,warp=warn".to_owned());
 
@@ -33,6 +33,7 @@ async fn main() {
         .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
 
     let store = Store::new("postgres://localhost:5432/rustwebdev").await;
+    sqlx::migrate!().run(&store.clone().pool).await?;
     let store_filter = warp::any().map(move || store.clone());
 
     let get_questions = warp::get()
@@ -81,4 +82,6 @@ async fn main() {
         .recover(return_error);
 
     warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
+
+    Ok(())
 }
