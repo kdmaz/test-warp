@@ -1,3 +1,5 @@
+use reqwest::Error as ReqwestError;
+use reqwest_middleware::Error as MiddlwareReqwestError;
 use std::fmt::Display;
 use tracing::{event, Level};
 use warp::{body::BodyDeserializeError, hyper::StatusCode, reject::Reject, Rejection, Reply};
@@ -7,6 +9,22 @@ pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
     DatabaseQueryError,
+    ReqwestApiError(ReqwestError),
+    MiddlwareReqwestApiError(MiddlwareReqwestError),
+    ClientError(ApiLayerError),
+    ServerError(ApiLayerError),
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiLayerError {
+    pub status: u16,
+    pub message: String,
+}
+
+impl Display for ApiLayerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Status: {}, Message: {}", self.status, self.message)
+    }
 }
 
 impl Reject for Error {}
@@ -17,6 +35,10 @@ impl Display for Error {
             Error::ParseError(err) => write!(f, "Cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "Missing parameter"),
             Error::DatabaseQueryError => write!(f, "Query could not be executed"),
+            Error::ReqwestApiError(err) => write!(f, "External API error: {}", err),
+            Error::MiddlwareReqwestApiError(err) => write!(f, "External API error: {}", err),
+            Error::ClientError(err) => write!(f, "External Client error: {}", err),
+            Error::ServerError(err) => write!(f, "External Server error: {}", err),
         }
     }
 }
@@ -24,7 +46,34 @@ impl Display for Error {
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     if let Some(Error::DatabaseQueryError) = r.find() {
         event!(Level::ERROR, "Database query error");
-        Ok(warp::reply::with_status(Error::DatabaseQueryError.to_string(), StatusCode::UNPROCESSABLE_ENTITY))
+        Ok(warp::reply::with_status(
+            Error::DatabaseQueryError.to_string(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ))
+    } else if let Some(Error::ReqwestApiError(e)) = r.find() {
+        event!(Level::ERROR, "{}", e);
+        Ok(warp::reply::with_status(
+            "Internal Server Error".to_string(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(Error::MiddlwareReqwestApiError(e)) = r.find() {
+        event!(Level::ERROR, "{}", e);
+        Ok(warp::reply::with_status(
+            "Internal Server Error".to_string(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(Error::ClientError(e)) = r.find() {
+        event!(Level::ERROR, "{}", e);
+        Ok(warp::reply::with_status(
+            "Internal Server Error".to_string(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(Error::ServerError(e)) = r.find() {
+        event!(Level::ERROR, "{}", e);
+        Ok(warp::reply::with_status(
+            "Internal Server Error".to_string(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )) 
     } else if let Some(error) = r.find::<Error>() {
         Ok(warp::reply::with_status(
             error.to_string(),

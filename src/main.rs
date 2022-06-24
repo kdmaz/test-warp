@@ -1,5 +1,6 @@
 #![warn(clippy::all)]
 
+mod profanity;
 mod routes;
 mod store;
 mod types;
@@ -15,8 +16,8 @@ use warp::{http::Method, Filter};
 
 #[tokio::main]
 async fn main() {
-    let log_filter =
-        std::env::var("RUST_LOG").unwrap_or_else(|_| "test_warp=info,warp=info".to_owned());
+    let log_filter = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| "handle_errors=warn,test_warp=warn,warp=warn".to_owned());
 
     tracing_subscriber::fmt()
         // Use the filter we built above to determine which traces to record.
