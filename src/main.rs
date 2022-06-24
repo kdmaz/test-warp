@@ -17,7 +17,7 @@ use warp::{http::Method, Filter};
 #[tokio::main]
 async fn main() {
     let log_filter = std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| "handle_errors=warn,test_warp=warn,warp=warn".to_owned());
+        .unwrap_or_else(|_| "handle_errors=info,test_warp=info,warp=warn".to_owned());
 
     tracing_subscriber::fmt()
         // Use the filter we built above to determine which traces to record.
@@ -40,15 +40,7 @@ async fn main() {
         .and(warp::path::end())
         .and(warp::query())
         .and(store_filter.clone())
-        .and_then(get_questions)
-        .with(warp::trace(|info| {
-            tracing::info_span!(
-                "get_questions request",
-                method = %info.method(),
-                path = %info.path(),
-                id = %uuid::Uuid::new_v4(),
-            )
-        }));
+        .and_then(get_questions);
 
     let add_question = warp::post()
         .and(warp::path("questions"))

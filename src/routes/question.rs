@@ -33,16 +33,27 @@ pub async fn get_questions(
     Ok(warp::reply::json(&res))
 }
 
+#[instrument]
 pub async fn add_question(
     store: Store,
     question: NewQuestion,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let title = check_profanity(question.title).await?;
-    let content = check_profanity(question.content).await?;
+    let title = check_profanity(question.title);
+    let content = check_profanity(question.content);
+
+    let (title, content) = tokio::join!(title, content);
+
+    if title.is_err() {
+        return Err(warp::reject::custom(title.unwrap_err()));
+    }
+
+    if content.is_err() {
+        return Err(warp::reject::custom(content.unwrap_err()));
+    }
 
     let question = NewQuestion {
-        title,
-        content,
+        title: title.unwrap(),
+        content: content.unwrap(),
         tags: question.tags,
     };
 
