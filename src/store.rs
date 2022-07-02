@@ -1,10 +1,13 @@
 use crate::types::{
-    account::Account,
+    account::{Account, AccountId},
     answer::{Answer, AnswerId, NewAnswer},
     question::{NewQuestion, Question, QuestionId},
 };
 use handle_errors::Error;
-use sqlx::{postgres::PgPoolOptions, PgPool, Row};
+use sqlx::{
+    postgres::{PgPoolOptions, PgRow},
+    PgPool, Row,
+};
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -166,6 +169,25 @@ impl Store {
                     db_message = e.as_database_error().unwrap().message(),
                     constraint = e.as_database_error().unwrap().constraint().unwrap()
                 );
+                Err(Error::DatabaseQueryError(e))
+            }
+        }
+    }
+
+    pub async fn get_account(self, email: String) -> Result<Account, Error> {
+        match sqlx::query("SELECT * from accounts where email = $1")
+            .bind(email)
+            .map(|row: PgRow| Account {
+                id: Some(AccountId(row.get("id"))),
+                email: row.get("email"),
+                password: row.get("password"),
+            })
+            .fetch_one(&self.pool)
+            .await
+        {
+            Ok(account) => Ok(account),
+            Err(e) => {
+                tracing::event!(tracing::Level::ERROR, "{:?}", e);
                 Err(Error::DatabaseQueryError(e))
             }
         }
