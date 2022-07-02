@@ -32,7 +32,7 @@ async fn main() -> Result<(), sqlx::Error> {
         .allow_header("content-type")
         .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
 
-    let store = Store::new("postgres://localhost:5432/rustwebdev").await;
+    let store = Store::new("postgres://postgres:postgres@localhost:5432/rustwebdev").await;
     sqlx::migrate!().run(&store.clone().pool).await?;
     let store_filter = warp::any().map(move || store.clone());
 
