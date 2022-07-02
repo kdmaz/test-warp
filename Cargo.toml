@@ -19,5 +19,7 @@ sqlx = { version = "0.5.13", features = ["postgres", "migrate", "runtime-tokio-r
 reqwest = { version = "0.11.11", features = ["json"] }
 reqwest-retry = "0.1.5"
 reqwest-middleware = "0.1.6"
+rand = "0.8.5"
+rust-argon2 = "1.0.0"
 
 [features]

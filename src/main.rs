@@ -72,11 +72,19 @@ async fn main() -> Result<(), sqlx::Error> {
         .and(warp::body::form())
         .and_then(add_answer);
 
+    let registration = warp::post()
+        .and(warp::path("registration"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(routes::authentication::register);
+
     let routes = get_questions
         .or(add_question)
         .or(update_question)
         .or(delete_question)
         .or(add_answer)
+        .or(registration)
         .with(cors)
         .with(warp::trace::request())
         .recover(return_error);
