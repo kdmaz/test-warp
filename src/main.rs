@@ -4,7 +4,7 @@ mod profanity;
 mod routes;
 mod store;
 mod types;
-
+use config::Config;
 use handle_errors::return_error;
 use routes::{
     answer::add_answer,
@@ -14,10 +14,32 @@ use store::Store;
 use tracing_subscriber::fmt::format::FmtSpan;
 use warp::{http::Method, Filter};
 
+#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+struct Args {
+    log_level: String,
+    database_host: String,
+    database_port: u16,
+    database_name: String,
+    app_port: u16,
+    database_username: String,
+    database_password: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
-    let log_filter = std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| "handle_errors=info,test_warp=info,warp=warn".to_owned());
+    let config = Config::builder()
+        .add_source(config::File::with_name("setup"))
+        .build()
+        .unwrap();
+
+    let config = config.try_deserialize::<Args>().unwrap();
+
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
+        format!(
+            "handle_errors={},test_warp={},warp={}",
+            config.log_level, config.log_level, config.log_level
+        )
+    });
 
     tracing_subscriber::fmt()
         // Use the filter we built above to determine which traces to record.
@@ -32,7 +54,15 @@ async fn main() -> Result<(), sqlx::Error> {
         .allow_header("content-type")
         .allow_methods(&[Method::PUT, Method::DELETE, Method::GET, Method::POST]);
 
-    let store = Store::new("postgres://postgres:postgres@localhost:5432/rustwebdev").await;
+    let store = Store::new(&format!(
+        "postgres://{username}:{password}@{host}:{port}/{name}",
+        username = config.database_username,
+        password = config.database_password,
+        host = config.database_host,
+        port = config.database_port,
+        name = config.database_name
+    ))
+    .await;
     sqlx::migrate!().run(&store.clone().pool).await?;
     let store_filter = warp::any().map(move || store.clone());
 
@@ -98,7 +128,9 @@ async fn main() -> Result<(), sqlx::Error> {
         .with(warp::trace::request())
         .recover(return_error);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
+    warp::serve(routes)
+        .run(([127, 0, 0, 1], config.app_port))
+        .await;
 
     Ok(())
 }
