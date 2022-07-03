@@ -26,4 +26,7 @@ chrono = "0.4.19"
 config = { version = "0.13.1", features = ["toml"] }
 dotenv = "0.15.0"
 
+[build-dependencies]
+platforms = "2.0.0"
+
 [features]

@@ -66,6 +66,8 @@ async fn main() -> Result<(), handle_errors::Error> {
         .with_span_events(FmtSpan::CLOSE)
         .init();
 
+    tracing::info!("Q&A service build ID {}", env!("RUST_WEB_DEV_VERSION"));
+
     let cors = warp::cors()
         .allow_any_origin()
         .allow_header("content-type")
