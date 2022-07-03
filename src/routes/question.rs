@@ -44,12 +44,12 @@ pub async fn add_question(
 
     let (title, content) = tokio::join!(title, content);
 
-    if title.is_err() {
-        return Err(warp::reject::custom(title.unwrap_err()));
+    if let Err(e) = title {
+        return Err(warp::reject::custom(e));
     }
 
-    if content.is_err() {
-        return Err(warp::reject::custom(content.unwrap_err()));
+    if let Err(e) = content {
+        return Err(warp::reject::custom(e));
     }
 
     let question = NewQuestion {

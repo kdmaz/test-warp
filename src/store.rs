@@ -15,7 +15,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub async fn new(connection_string: &str) -> Self {
+    pub async fn new(connection_string: &str) -> Result<Self, sqlx::Error> {
         let pool = match PgPoolOptions::new()
             .max_connections(5)
             .connect(connection_string)
@@ -25,7 +25,7 @@ impl Store {
             Err(_) => panic!("Couldn't establish db connection"),
         };
 
-        Store { pool }
+        Ok(Store { pool })
     }
 
     pub async fn get_questions(

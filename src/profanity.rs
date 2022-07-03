@@ -1,3 +1,5 @@
+use std::env;
+
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::{Deserialize, Serialize};
@@ -29,13 +31,15 @@ pub async fn check_profanity(content: String) -> Result<String, handle_errors::E
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
         .build();
 
+    let api_key = env::var("BAD_WORDS_API_KEY").unwrap();
+
     let res = client
         .post("https://api.apilayer.com/bad_words?censor_character=*")
-        .header("apiKey", "cATuSeOBeHeS1jf3rApZEXM431gPW7Lt")
+        .header("apiKey", api_key)
         .body(content)
         .send()
         .await
-        .map_err(|e| handle_errors::Error::MiddlwareReqwestApiError(e))?;
+        .map_err(handle_errors::Error::MiddlwareReqwestApiError)?;
 
     if !res.status().is_success() {
         let status = res.status().as_u16();

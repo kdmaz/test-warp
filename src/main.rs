@@ -1,10 +1,12 @@
 #![warn(clippy::all)]
-
 mod profanity;
 mod routes;
 mod store;
 mod types;
+use std::env;
+
 use config::Config;
+use dotenv::dotenv;
 use handle_errors::return_error;
 use routes::{
     answer::add_answer,
@@ -26,13 +28,28 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), sqlx::Error> {
+async fn main() -> Result<(), handle_errors::Error> {
     let config = Config::builder()
         .add_source(config::File::with_name("setup"))
         .build()
         .unwrap();
-
     let config = config.try_deserialize::<Args>().unwrap();
+
+    dotenv().ok();
+
+    if env::var("BAD_WORDS_API_KEY").is_err() {
+        panic!("BAD_WORDS_API_KEY not set");
+    }
+
+    if env::var("PASETO_KEY").is_err() {
+        panic!("PASETO_KEY not set");
+    }
+
+    let port = std::env::var("PORT")
+        .ok()
+        .map(|val| val.parse::<u16>())
+        .unwrap_or(Ok(config.app_port))
+        .map_err(handle_errors::Error::ParseError)?;
 
     let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
         format!(
@@ -62,8 +79,14 @@ async fn main() -> Result<(), sqlx::Error> {
         port = config.database_port,
         name = config.database_name
     ))
-    .await;
-    sqlx::migrate!().run(&store.clone().pool).await?;
+    .await
+    .map_err(handle_errors::Error::DatabaseQueryError)?;
+
+    sqlx::migrate!()
+        .run(&store.clone().pool)
+        .await
+        .map_err(handle_errors::Error::MigrationError)?;
+
     let store_filter = warp::any().map(move || store.clone());
 
     let get_questions = warp::get()
@@ -128,9 +151,7 @@ async fn main() -> Result<(), sqlx::Error> {
         .with(warp::trace::request())
         .recover(return_error);
 
-    warp::serve(routes)
-        .run(([127, 0, 0, 1], config.app_port))
-        .await;
+    warp::serve(routes).run(([127, 0, 0, 1], port)).await;
 
     Ok(())
 }
