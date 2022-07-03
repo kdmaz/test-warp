@@ -79,20 +79,25 @@ impl Store {
         }
     }
 
-    pub async fn update_question(&self, question: Question) -> Result<Question, Error> {
+    pub async fn update_question(
+        &self,
+        question: Question,
+        account_id: AccountId,
+    ) -> Result<Question, Error> {
         match sqlx::query(
             "UPDATE questions
             SET
                 title = $1,
                 content = $2,
                 tags = $3
-            WHERE id = $4
+            WHERE id = $4 AND account_id = $5
             RETURNING id, title, content, tags",
         )
         .bind(question.title)
         .bind(question.content)
         .bind(question.tags)
         .bind(question.id.0)
+        .bind(account_id.0)
         .map(|row| Question {
             id: QuestionId(row.get("id")),
             title: row.get("title"),
@@ -186,6 +191,25 @@ impl Store {
             .await
         {
             Ok(account) => Ok(account),
+            Err(e) => {
+                tracing::event!(tracing::Level::ERROR, "{:?}", e);
+                Err(Error::DatabaseQueryError(e))
+            }
+        }
+    }
+
+    pub async fn is_question_owner(
+        &self,
+        question_id: i32,
+        account_id: &AccountId,
+    ) -> Result<bool, Error> {
+        match sqlx::query("SELECT * from questions where id = $1 and account_id = $2")
+            .bind(question_id)
+            .bind(account_id.0)
+            .fetch_optional(&self.pool)
+            .await
+        {
+            Ok(question) => Ok(question.is_some()),
             Err(e) => {
                 tracing::event!(tracing::Level::ERROR, "{:?}", e);
                 Err(Error::DatabaseQueryError(e))

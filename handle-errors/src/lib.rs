@@ -10,6 +10,8 @@ pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
     WrongPassword,
+    CannotDecryptToken,
+    Unauthorized,
     ArgonLibraryError(ArgonError),
     DatabaseQueryError(sqlx::Error),
     ReqwestApiError(ReqwestError),
@@ -38,6 +40,8 @@ impl Display for Error {
             Error::ParseError(err) => write!(f, "Cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "Missing parameter"),
             Error::WrongPassword => write!(f, "Wrong password"),
+            Error::CannotDecryptToken => write!(f, "Cannot decrypt error"),
+            Error::Unauthorized => write!(f, "No permission to change the underlying resource"),
             Error::ArgonLibraryError(_) => write!(f, "Cannot verify password"),
             Error::DatabaseQueryError(_) => write!(f, "Query could not be executed"),
             Error::ReqwestApiError(err) => write!(f, "External API error: {}", err),
@@ -78,6 +82,12 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
         Ok(warp::reply::with_status(
             "Internal Server Error".to_string(),
             StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(Error::Unauthorized) = r.find() {
+         event!(Level::ERROR, "Not matching account id");
+        Ok(warp::reply::with_status(
+        "No permission to change underlying resource".to_string(),
+        StatusCode::UNAUTHORIZED,
         ))
     } else if let Some(crate::Error::WrongPassword) = r.find() {
         event!(Level::ERROR, "Entered wrong password");

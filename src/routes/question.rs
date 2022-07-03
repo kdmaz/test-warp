@@ -2,6 +2,7 @@ use crate::{
     profanity::check_profanity,
     store::Store,
     types::{
+        account::Session,
         pagination::{extract_pagination, Pagination},
         question::{NewQuestion, Question},
     },
@@ -64,33 +65,39 @@ pub async fn add_question(
 }
 
 pub async fn update_question(
-    _id: i32,
+    id: i32,
+    session: Session,
     store: Store,
     question: Question,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let title = check_profanity(question.title);
-    let content = check_profanity(question.content);
+    let account_id = session.account_id;
+    if store.is_question_owner(id, &account_id).await? {
+        let title = check_profanity(question.title);
+        let content = check_profanity(question.content);
 
-    let (title, content) = tokio::join!(title, content);
+        let (title, content) = tokio::join!(title, content);
 
-    if title.is_err() {
-        return Err(warp::reject::custom(title.unwrap_err()));
-    }
+        if title.is_err() {
+            return Err(warp::reject::custom(title.unwrap_err()));
+        }
 
-    if content.is_err() {
-        return Err(warp::reject::custom(content.unwrap_err()));
-    }
+        if content.is_err() {
+            return Err(warp::reject::custom(content.unwrap_err()));
+        }
 
-    let question = Question {
-        id: question.id,
-        title: title.unwrap(),
-        content: content.unwrap(),
-        tags: question.tags,
-    };
+        let question = Question {
+            id: question.id,
+            title: title.unwrap(),
+            content: content.unwrap(),
+            tags: question.tags,
+        };
 
-    match store.update_question(question).await {
-        Ok(question) => Ok(warp::reply::json(&question)),
-        Err(e) => Err(warp::reject::custom(e)),
+        match store.update_question(question, account_id).await {
+            Ok(question) => Ok(warp::reply::json(&question)),
+            Err(e) => Err(warp::reject::custom(e)),
+        }
+    } else {
+        Err(warp::reject::custom(handle_errors::Error::Unauthorized))
     }
 }
 
